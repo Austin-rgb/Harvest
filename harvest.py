@@ -35,7 +35,6 @@ if fs.__contains__('harvest_context.json'):
     openned=context['openned']
     removed=context['removed']
     print('Continuing with the paused project')
-    '''
 else:
     domain=input('Enter domain of the website e.g https://www.example.com\n')
     openned=[]
@@ -77,7 +76,7 @@ while len(discovered)>len(openned):
                 removed.append(d)
                 discovered.remove(d)
         os.system('clear')
-        print(f'Discovered {len(discovered)+len(removed)} links\t Openned {len(openned)} links\t removed {len(removed)} noninternal links')'''
+        print(f'Discovered {len(discovered)+len(removed)} links\t Openned {len(openned)} links\t removed {len(removed)} noninternal links')
 msg='<!doctype html><html><head><title>Scraped links</title></head><body><table><thead><td>Text</td><td>URL</td><td>isinternal</td></thead>'
 for o in openned:
     try:
