@@ -1,8 +1,14 @@
 import re,sys,requests,os,json
-from smtplib import SMTP 
+from smtplib import SMTP
+def save(context):
+    try:
+        os.remove('harvest_context.json')
+    except:
+        pass
+    open('harvest_context.json','x+').write(json.dumps(context))
 def scrap(data,domain):
     title=re.compile(r'<title>.+</title>')
-    target_pattern=re.compile(f'<a href="[\S]+?"')
+    target_pattern=re.compile(r'<a href="[\S]+?"')
     z=target_pattern.findall(data)
     d=title.findall(data)
     if len(d)>0:
@@ -26,59 +32,64 @@ def scrap(data,domain):
         d1['url']=i
         linkdicts.append(d1)
     return t,linkdicts
-fs=os.listdir()
-if fs.__contains__('harvest_context.json'):
-    context_file=open('harvest_context.json','r+')
-    context=json.loads(context_file.read())
+def collect_links(context):
     domain=context['domain']
     discovered=context['discovered']
+    discovery_limit=context['discovery_limit']
     openned=context['openned']
     removed=context['removed']
-    print('Continuing with the paused project')
-else:
-    domain=input('Enter domain of the website e.g https://www.example.com\n')
-    openned=[]
-    discovered=[]
-    removed=[]
-try:
-    t,discovered=scrap(requests.get(domain).text,domain)
-except:
-    context={'domain':domain,'discovered':discovered,'openned':openned,'removed':removed}
-    os.remove('harvest_context.json')
-    open('harvest_context.json','x+').write(json.dumps(context))
-    print('Connection was reset please reconnect')
-    sys.exit()
-d1={'title':t,'link':domain,'isinternal':True}
-openned.append(d1)
-while len(discovered)>len(openned):
-    for d in discovered:
-        if not openned.__contains__(d):
-            if d['isinternal']:
-                try:
-                    data=requests.get(d['url']).text
-                except:
-                    print('Connection was reset, please reconnect')
-                    context={'domain':domain,'discovered':discovered,'openned':openned,'removed':removed}
+    try:
+        t,discovered=scrap(requests.get(domain).text,domain)
+    except:
+        print('Connection was reset please reconnect')
+        save(context)
+        sys.exit()
+    d1={'title':t,'link':domain,'isinternal':True}
+    openned.append(d1)
+    while len(discovered)-removed>len(openned):
+        for d in discovered:
+            if not openned.__contains__(d):
+                if d['isinternal']:
                     try:
-                        os.remove('harvest_context.json')
+                        data=requests.get(d['url']).text
                     except:
-                        pass
-                    open('harvest_context.json','x+').write(json.dumps(context))
-                    print('Successfully saved project context')
-                    sys.exit()
-                t,links=scrap(data,domain)
-                for l in links:
-                    if not discovered.__contains__(l):
-                        discovered.append(l)
-                d1={'title':t,'url':d['url'],'isinternal':d['isinternal']}
-                openned.append(d1)
+                        print('Connection was reset, please reconnect')
+                        context={'domain':domain,'discovered':discovered,'openned':openned,'removed':removed}
+                        print('Successfully saved project context')
+                        save(context)
+                        sys.exit()
+                    t,links=scrap(data,domain)
+                    if len(discovered)>discovery_limit:
+                        context=context={'domain':domain,'discovered':discovered,'openned':openned,'removed':removed}
+                        return context
+                    for l in links:
+                        if len(discovered)<discovery_limit and not discovered.__contains__(l):
+                            discovered.append(l)
+                    d1={'title':t,'url':d['url'],'isinternal':d['isinternal']}
+                    openned.append(d1)
+                else:
+                    removed+=1
+            if sys.platform.startswith('linux'):
+                os.system('clear')
             else:
-                removed.append(d)
-                discovered.remove(d)
-        os.system('clear')
-        print(f'Discovered {len(discovered)+len(removed)} links\t Openned {len(openned)} links\t removed {len(removed)} noninternal links')
+                os.system('cls')
+            print(f'Discovered {len(discovered)+removed} links\t Openned {len(openned)} links\t removed {removed} noninternal links')
+    return context
+fs=os.listdir()
+context=dict()
+if fs.__contains__('harvest_context.json'):
+    context=json.loads(open('harvest_context.json','r+').read())
+else:
+    context['domain']=input('Enter domain of the website e.g https://www.example.com\n')
+    context['discovery_limit']=int(input('Enter discovery limit or 0 to discover everything\n'))
+    context['discovered']=[]
+    context['openned']=[]
+    context['removed']=0
+context=collect_links(context)
+save(context)
+discovered=context['discovered']
 msg='<!doctype html><html><head><title>Scraped links</title></head><body><table><thead><td>Text</td><td>URL</td><td>isinternal</td></thead>'
-for o in openned:
+for o in discovered:
     try:
         msg+='<tr><td>'+o['title']+'</td>'
         msg+='<td>'+o['url']+'</td>'
@@ -95,20 +106,34 @@ except:
 print('Links file compiled succesfully.')
 if context.keys().__contains__('email_server'):
     server=context['email_server']
+else:
+    context['email_server']=input('Enter email server')
+    server=context['email_server']
+if context.keys().__contains__('fromaddr'):
     fromaddr=context['fromaddr']
+else:
+    context['fromaddr']=input('Sending from:\n')
+    fromaddr=context['fromaddr']
+if context.keys().__contains__('toaddr'):
     toaddr=context['toaddr']
 else:
-    server=input('Enter email server e.g example.com\n')
-    context['email_server']=server
-    fromaddr=input('Sending email from:\n')
-    toaddr=input('Sending email to:\n')
-    context['fromaddr']=fromaddr
-    context['toaddr']=toaddr
-    
-final=SMTP(server)
-final.login(fromaddr,'$Ost@prof12')
-final.sendmail(fromaddr,toaddr,msg)
-#os.remove('harvest_context.json')
-#open('harvest_context.json','x+').write(json.dumps(context))
-print('Could not send email, please confirm that you are connected.')
-
+    context['toaddr']=input('Sending to:\n')
+    toaddr=context['toaddr']
+try:
+    final=SMTP(server)
+except:
+    save(context)
+    print(f'Could not connect to {server}, please confirm that you are online')
+    sys.exit()
+try:
+    pswd=input(f'Enter password for {fromaddr}')
+    final.login(fromaddr,pswd)
+except:
+    save(context)
+    print(f'Could not login to {fromaddr}, please confirm the login details')
+    sys.exit()
+try:
+    final.sendmail(fromaddr,toaddr,msg)
+except:
+    save(context)
+    print(f'Could not send email to {toaddr}, unknown error\n')
