@@ -1,5 +1,6 @@
-import re,sys,requests,os,json
-from smtplib import SMTP
+import re,sys,requests,os,json, smtplib,ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 def save(context):
     try:
         os.remove('harvest_context.json')
@@ -85,8 +86,8 @@ else:
     context['discovered']=[]
     context['openned']=[]
     context['removed']=0
-context=collect_links(context)
-save(context)
+#context=collect_links(context)
+#save(context)
 discovered=context['discovered']
 msg='<!doctype html><html><head><title>Scraped links</title></head><body><table><thead><td>Text</td><td>URL</td><td>isinternal</td></thead>'
 for o in discovered:
@@ -104,11 +105,7 @@ try:
 except:
     pass
 print('Links file compiled succesfully.')
-if context.keys().__contains__('email_server'):
-    server=context['email_server']
-else:
-    context['email_server']=input('Enter email server')
-    server=context['email_server']
+
 if context.keys().__contains__('fromaddr'):
     fromaddr=context['fromaddr']
 else:
@@ -119,21 +116,19 @@ if context.keys().__contains__('toaddr'):
 else:
     context['toaddr']=input('Sending to:\n')
     toaddr=context['toaddr']
+message=MIMEMultipart('alternative')
+message['Subject']='Web scaping results'
+message['From']=fromaddr
+message['To']=toaddr
+
+message.attach(MIMEText(msg,'html'))
 try:
-    final=SMTP(server)
-except:
+    port=465
+    secure_context=ssl.create_default_context()
+    password=input(f'Enter password for {fromaddr}')
+    with smtplib.SMTP_SSL('smtp.gmail.com',port,context=secure_context) as server:
+        server.login(fromaddr,password)
+        server.sendmail(fromaddr,toaddr,message.as_string())
+except Exception as e:
     save(context)
-    print(f'Could not connect to {server}, please confirm that you are online')
-    sys.exit()
-try:
-    pswd=input(f'Enter password for {fromaddr}')
-    final.login(fromaddr,pswd)
-except:
-    save(context)
-    print(f'Could not login to {fromaddr}, please confirm the login details')
-    sys.exit()
-try:
-    final.sendmail(fromaddr,toaddr,msg)
-except:
-    save(context)
-    print(f'Could not send email to {toaddr}, unknown error\n')
+    print(f'Could not send email to {toaddr}, {e}')
